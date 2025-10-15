@@ -17,7 +17,6 @@ warnings.filterwarnings("ignore", category=FutureWarning, module="huggingface_hu
 PERSIST_DIR = "./storage"
 
 def load_chat_logs_as_documents(file_path):
-    # This function is unchanged
     documents = []
     file_name = os.path.basename(file_path)
     with open(file_path, 'r', encoding='utf-8') as f:
@@ -39,7 +38,6 @@ def load_chat_logs_as_documents(file_path):
     return documents
 
 def get_unique_authors(data_path):
-    # This function is unchanged
     print("Identifying unique authors from JSON files...")
     authors = set()
     json_files = glob.glob(os.path.join(data_path, "*.json"))
@@ -57,7 +55,7 @@ def get_unique_authors(data_path):
     print(f"Found {len(author_list)} unique authors.")
     return author_list
 
-# --- NEW: Helper function to parse user's selection ---
+# Helper function to parse user's selection
 def parse_selection(selection_str, authors):
     """Parses a user's selection string (e.g., '1, 3-5') into a list of author names."""
     selected_indices = set()
@@ -97,11 +95,30 @@ def main():
     Settings.llm = Ollama(model="llama3", request_timeout=360.0)
     json_data_path = os.path.expanduser("~/serveur/json")
    
-    # --- Index loading is unchanged ---
-    if not os.path.exists(PERSIST_DIR):
-        print("Index not found. Please run the script once to build the index first.")
-        # The full indexing logic is omitted here for brevity but should be present in your file.
-        return
+
+  if not os.path.exists(PERSIST_DIR):
+        print("Creating a new, structured index...")
+        json_files = glob.glob(os.path.join(json_data_path, "*.json"))
+        if not json_files:
+            print(f"No JSON files found in '{json_data_path}'. Exiting.")
+            return
+
+        all_documents = []
+        for file_path in json_files:
+            print(f" > Loading messages from {os.path.basename(file_path)}")
+            # Use our new function to get structured documents
+            docs_from_file = load_chat_logs_as_documents(file_path)
+            all_documents.extend(docs_from_file)
+       
+        if all_documents:
+            print(f"\nBuilding index from {len(all_documents)} total messages...")
+            index = VectorStoreIndex.from_documents(all_documents, show_progress=True)
+            print(f"Saving index to '{PERSIST_DIR}'...")
+            index.storage_context.persist(persist_dir=PERSIST_DIR)
+            print("Index created and saved successfully.")
+        else:
+            print("No messages with content found to index.")
+            return
     else:
         print(f"Loading existing index from '{PERSIST_DIR}'...")
         storage_context = StorageContext.from_defaults(persist_dir=PERSIST_DIR)
