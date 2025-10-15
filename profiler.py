@@ -96,7 +96,7 @@ def main():
     json_data_path = os.path.expanduser("~/serveur/json")
    
 
-  if not os.path.exists(PERSIST_DIR):
+    if not os.path.exists(PERSIST_DIR):
         print("Creating a new, structured index...")
         json_files = glob.glob(os.path.join(json_data_path, "*.json"))
         if not json_files:
@@ -105,19 +105,43 @@ def main():
 
         all_documents = []
         for file_path in json_files:
-            print(f" > Loading messages from {os.path.basename(file_path)}")
-            # Use our new function to get structured documents
-            docs_from_file = load_chat_logs_as_documents(file_path)
-            all_documents.extend(docs_from_file)
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+               
+                # Ensure the file has the correct structure
+                if not (isinstance(data, dict) and 'messages' in data and isinstance(data['messages'], list)):
+                    print(f" > Skipping {os.path.basename(file_path)}: Does not contain a 'messages' list.")
+                    continue
+
+                # Create a clean Document object for each message
+                file_message_count = 0
+                for msg in data['messages']:
+                    author_name = msg.get('author', {}).get('name')
+                    content = msg.get('content')
+                   
+                    # We only index messages that have both an author and content
+                    if isinstance(author_name, str) and author_name.strip() and isinstance(content, str) and content.strip():
+                        doc = Document(
+                            text=f"{author_name} said: {content}",
+                            metadata={"author": author_name.strip(), "source_file": os.path.basename(file_path)}
+                        )
+                        all_documents.append(doc)
+                        file_message_count += 1
+               
+                print(f" > Indexed {file_message_count} messages from {os.path.basename(file_path)}")
+
+            except Exception as e:
+                print(f" > FAILED to process {os.path.basename(file_path)}: {e}")
        
         if all_documents:
-            print(f"\nBuilding index from {len(all_documents)} total messages...")
-            index = VectorStoreIndex.from_documents(all_documents, show_progress=True)
-            print(f"Saving index to '{PERSIST_DIR}'...")
+            print(f"\nCreating index from a total of {len(all_documents)} messages...")
+            index = VectorStoreIndex.from_documents(all_documents)
+            print("Persisting index to disk...")
             index.storage_context.persist(persist_dir=PERSIST_DIR)
             print("Index created and saved successfully.")
         else:
-            print("No messages with content found to index.")
+            print("\nNo valid messages found across all files to create an index.")
             return
     else:
         print(f"Loading existing index from '{PERSIST_DIR}'...")
