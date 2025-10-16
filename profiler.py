@@ -160,7 +160,7 @@ def main():
             if not authors_to_analyze:
                 print("Your selection was empty or invalid. Please try again.")
        
-        # --- Analysis loop now uses the selected list ---
+        # Use selected authors to analyze
         print(f"\nStarting analysis for {len(authors_to_analyze)} selected author(s)...")
         for author in authors_to_analyze:
             analysis_prompt = (
