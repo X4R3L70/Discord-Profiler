@@ -16,28 +16,9 @@ warnings.filterwarnings("ignore", category=FutureWarning, module="huggingface_hu
 
 PERSIST_DIR = "./storage"
 
-def load_chat_logs_as_documents(file_path):
-    documents = []
-    file_name = os.path.basename(file_path)
-    with open(file_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    if not (isinstance(data, dict) and 'messages' in data):
-        return []
-    for message in data['messages']:
-        author_name = "Unknown"
-        if (isinstance(message.get('author'), dict) and message['author'].get('name')):
-            author_name = message['author']['name']
-        content = message.get('content', '')
-        if content:
-            doc_text = f"Author: {author_name}\nContent: {content}"
-            document = Document(
-                text=doc_text,
-                metadata={"author": author_name, "file_source": file_name, "timestamp": message.get('timestamp')}
-            )
-            documents.append(document)
-    return documents
-
+# Get unique authors from JSON chat logs
 def get_unique_authors(data_path):
+    """Scans all JSON files to find and return a list of unique authors."""
     print("Identifying unique authors from JSON files...")
     authors = set()
     json_files = glob.glob(os.path.join(data_path, "*.json"))
@@ -45,13 +26,20 @@ def get_unique_authors(data_path):
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            if 'messages' in data:
-                for msg in data['messages']:
-                    if 'author' in msg and 'name' in msg['author']:
-                        authors.add(msg['author']['name'])
+           
+            if isinstance(data, dict) and 'messages' in data and isinstance(data['messages'], list):
+                for item in data['messages']:
+                    if (isinstance(item, dict) and 'author' in item and
+                        isinstance(item['author'], dict) and 'name' in item['author']):
+                        author_name = item['author']['name']
+                        if isinstance(author_name, str) and author_name.strip():
+                            authors.add(author_name.strip())
         except Exception as e:
             print(f" > Could not process {os.path.basename(file_path)} for authors: {e}")
+   
     author_list = sorted(list(authors))
+    print(author_list)
+
     print(f"Found {len(author_list)} unique authors.")
     return author_list
 
@@ -86,16 +74,13 @@ def parse_selection(selection_str, authors):
            
     # Return a list of author names based on the selected indices
     return [authors[i] for i in sorted(list(selected_indices))]
-
+    
 def main():
-    """
-    Main function with an interactive prompt for author selection.
-    """
     Settings.embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
     Settings.llm = Ollama(model="llama3", request_timeout=360.0)
-    json_data_path = os.path.expanduser("~/serveur/json")
+    json_data_path = os.path.expanduser("~/serveur/tjson")
    
-
+    # Indexing logic
     if not os.path.exists(PERSIST_DIR):
         print("Creating a new, structured index...")
         json_files = glob.glob(os.path.join(json_data_path, "*.json"))
@@ -149,14 +134,15 @@ def main():
         index = load_index_from_storage(storage_context)
         print("Index loaded successfully.")
    
+    # Analysis Logic
     if 'index' in locals() and index:
-        query_engine = index.as_query_engine(streaming=True, similarity_top_k=15)
+        query_engine = index.as_query_engine(streaming=True)
         unique_authors = get_unique_authors(json_data_path)
         if not unique_authors:
             print("No authors found. Cannot perform analysis.")
             return
 
-        # --- NEW: Interactive selection menu ---
+        # Interactive selection menu
         print("\nPlease select the authors you want to analyze:")
         for i, author in enumerate(unique_authors):
             print(f"  {i+1}. {author}")
